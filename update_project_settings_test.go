@@ -8,22 +8,16 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
+
+	configs "github.com/oleksandr-holan/gitlab-setup/pkg/config"
 )
 
 const (
 	letterBytes  = "abcdefghijklmnopqrstuvwxyz"
 	stringLength = 8
 )
-
-type Config struct {
-	GitlabURL   string `json:"gitlab_url"`
-	AccessToken string `json:"access_token"`
-	MainGroupID int    `json:"main_group_id"`
-}
 
 type GitLabGroup struct {
 	ID   int    `json:"id"`
@@ -38,36 +32,14 @@ type GitLabProject struct {
 	SquashOption string `json:"squash_option"`
 }
 
-var config Config
+var config *configs.GitLab
 
 func init() {
-	if err := loadConfig(); err != nil {
+	var err error
+	if config, err = configs.NewGitLabConfig(); err != nil {
 		panic(fmt.Sprintf("Failed to load config: %v", err))
 	}
 	rand.Seed(time.Now().UnixNano())
-}
-
-func loadConfig() error {
-	configPath := filepath.Join(".", "config.json")
-
-	file, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("reading config file: %v", err)
-	}
-
-	if err := json.Unmarshal(file, &config); err != nil {
-		return fmt.Errorf("parsing config file: %v", err)
-	}
-
-	if config.GitlabURL == "" || config.AccessToken == "" || config.MainGroupID == 0 {
-		return fmt.Errorf("gitlab_url, access_token, and main_group_id must be set in config.json")
-	}
-
-	if !strings.HasPrefix(config.GitlabURL, "https://") {
-		return fmt.Errorf("gitlab_url must use HTTPS (e.g., https://gitlab.example.com)")
-	}
-
-	return nil
 }
 
 func TestUpdateSquashOption(t *testing.T) {
