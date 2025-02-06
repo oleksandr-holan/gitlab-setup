@@ -26,7 +26,10 @@ func main() {
 
 	// Create two slices to store results
 	hasDevBranchProjects := make([]string, 0)
-	noDevBranchProjects := make([]string, 0)
+	noDevBranchProjects := make([]struct {
+		info          string
+		defaultBranch string
+	}, 0)
 
 	// Check each project and accumulate results
 	for _, project := range projects {
@@ -40,7 +43,13 @@ func main() {
 		if hasDevBranch {
 			hasDevBranchProjects = append(hasDevBranchProjects, projectInfo)
 		} else {
-			noDevBranchProjects = append(noDevBranchProjects, projectInfo)
+			noDevBranchProjects = append(noDevBranchProjects, struct {
+				info          string
+				defaultBranch string
+			}{
+				info:          projectInfo,
+				defaultBranch: project.DefaultBranch,
+			})
 		}
 	}
 
@@ -54,7 +63,7 @@ func main() {
 	fmt.Printf("\nProjects without environment/dev branch (%d):\n", len(noDevBranchProjects))
 	fmt.Println("------------------------------------------")
 	for _, project := range noDevBranchProjects {
-		fmt.Printf("- %s\n", project)
+		fmt.Printf("- %s (default branch: %s)\n", project.info, project.defaultBranch)
 	}
 }
 
