@@ -15,7 +15,7 @@ type GitLab struct {
 }
 
 func NewGitLabConfig() (*GitLab, error) {
-	configPath := filepath.Join(".", "config.json")
+	configPath := filepath.Join(".", "config.personal.json")
 	cfg := &GitLab{}
 
 	err := cleanenv.ReadConfig(configPath, cfg)

@@ -105,37 +105,6 @@ func updateProjectSettings(client *gitlab.Client, projectID int) error {
 	return nil
 }
 
-// func updateProjectSettings(client *http.Client, gitlabURL, accessToken string, projectID int) error {
-// 	url := fmt.Sprintf("%s/api/v4/projects/%d", gitlabURL, projectID)
-
-// 	data := map[string]string{
-// 		"squash_option": "default_on", // Options: "never", "always", "default_on", "default_off"
-// 	}
-// 	jsonData, err := json.Marshal(data)
-// 	if err != nil {
-// 		return fmt.Errorf("marshaling data: %v", err)
-// 	}
-
-// 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
-// 	if err != nil {
-// 		return fmt.Errorf("creating request: %v", err)
-// 	}
-// 	req.Header.Add("PRIVATE-TOKEN", accessToken)
-// 	req.Header.Add("Content-Type", "application/json")
-
-// 	resp, err := client.Do(req)
-// 	if err != nil {
-// 		return fmt.Errorf("sending request: %v", err)
-// 	}
-// 	defer resp.Body.Close()
-
-// 	if resp.StatusCode != http.StatusOK {
-// 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-// 	}
-
-// 	return nil
-// }
-
 // Project represents a GitLab project
 type Project struct {
 	ID                int    `json:"id"`
