@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"os"
@@ -20,6 +21,7 @@ const (
 type Config struct {
 	GitlabURL   string `json:"gitlab_url"`
 	AccessToken string `json:"access_token"`
+	MainGroupID int    `json:"main_group_id"`
 }
 
 type GitLabGroup struct {
@@ -41,10 +43,10 @@ func init() {
 	if err := loadConfig(); err != nil {
 		panic(fmt.Sprintf("Failed to load config: %v", err))
 	}
+	rand.Seed(time.Now().UnixNano())
 }
 
 func loadConfig() error {
-	// Look for config.json in the same directory as the test file
 	configPath := filepath.Join(".", "config.json")
 
 	file, err := os.ReadFile(configPath)
@@ -56,37 +58,34 @@ func loadConfig() error {
 		return fmt.Errorf("parsing config file: %v", err)
 	}
 
-	if config.GitlabURL == "" || config.AccessToken == "" {
-		return fmt.Errorf("gitlab_url and access_token must be set in config.json")
+	if config.GitlabURL == "" || config.AccessToken == "" || config.MainGroupID == 0 {
+		return fmt.Errorf("gitlab_url, access_token, and main_group_id must be set in config.json")
 	}
 
 	return nil
 }
 
 func TestUpdateSquashOption(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
-
-	// Create main group
-	mainGroup := createGroup(t, "", generateRandomString())
-
-	// Create first subgroup
-	subGroup1 := createGroup(t, fmt.Sprint(mainGroup.ID), generateRandomString())
-
-	// Create second subgroup under first subgroup
-	subGroup2 := createGroup(t, fmt.Sprint(subGroup1.ID), generateRandomString())
-
-	// Create projects with different squash options
-	projects := []GitLabProject{
-		createProject(t, fmt.Sprint(subGroup2.ID), generateRandomString(), "never"),       // Deepest level
-		createProject(t, fmt.Sprint(subGroup1.ID), generateRandomString(), "always"),      // Mid level
-		createProject(t, fmt.Sprint(mainGroup.ID), generateRandomString(), "default_off"), // Top level
+	subGroup1 := createGroup(t, config.MainGroupID, generateRandomString())
+	subGroup2 := createGroup(t, subGroup1.ID, generateRandomString())
+	subgroups := []GitLabGroup{
+		subGroup1,
+		subGroup2,
 	}
 
-	// Run the main program
-	os.Args = []string{"cmd", config.GitlabURL, config.AccessToken, fmt.Sprint(mainGroup.ID)}
+	projects := []GitLabProject{
+		createProject(t, subGroup2.ID, generateRandomString(), "never"),
+		createProject(t, subGroup1.ID, generateRandomString(), "always"),
+		createProject(t, config.MainGroupID, generateRandomString(), "default_off"),
+	}
+
+	t.Cleanup(func() {
+		cleanupSubgroupsAndProjects(t, subgroups, projects)
+	})
+
+	os.Args = []string{"cmd", config.GitlabURL, config.AccessToken, fmt.Sprint(config.MainGroupID)}
 	main()
 
-	// Verify all projects now have squash_option set to default_on
 	for _, project := range projects {
 		currentSquashOption := getProjectSquashOption(t, project.ID)
 		if currentSquashOption != "default_on" {
@@ -95,38 +94,45 @@ func TestUpdateSquashOption(t *testing.T) {
 		}
 	}
 
-	// Cleanup
-	cleanupGroup(t, mainGroup.ID)
 }
 
-func createGroup(t *testing.T, parentID, name string) GitLabGroup {
+func createGroup(t *testing.T, parentID int, name string) GitLabGroup {
 	t.Helper()
 
 	url := fmt.Sprintf("%s/api/v4/groups", config.GitlabURL)
-	data := map[string]string{
+	data := map[string]interface{}{
 		"name": name,
 		"path": name,
 	}
-	if parentID != "" {
+	if parentID != 0 {
 		data["parent_id"] = parentID
 	}
 
 	resp := makeRequest(t, "POST", url, data)
 	defer resp.Body.Close()
 
+	// Log the response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+	t.Logf("Response Body: %s", string(bodyBytes))
+	t.Logf("Status Code: %d", resp.StatusCode)
+
+	// Decode the response body
 	var group GitLabGroup
-	if err := json.NewDecoder(resp.Body).Decode(&group); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&group); err != nil {
 		t.Fatalf("Failed to decode group response: %v", err)
 	}
 
 	return group
 }
 
-func createProject(t *testing.T, groupID, name, squashOption string) GitLabProject {
+func createProject(t *testing.T, groupID int, name, squashOption string) GitLabProject {
 	t.Helper()
 
 	url := fmt.Sprintf("%s/api/v4/projects", config.GitlabURL)
-	data := map[string]string{
+	data := map[string]interface{}{
 		"name":          name,
 		"path":          name,
 		"namespace_id":  groupID,
@@ -159,24 +165,32 @@ func getProjectSquashOption(t *testing.T, projectID int) string {
 	return project.SquashOption
 }
 
-func cleanupGroup(t *testing.T, groupID int) {
+func cleanupSubgroupsAndProjects(t *testing.T, subgroups []GitLabGroup, projects []GitLabProject) {
 	t.Helper()
 
-	url := fmt.Sprintf("%s/api/v4/groups/%d", config.GitlabURL, groupID)
-	resp := makeRequest(t, "DELETE", url, nil)
-	resp.Body.Close()
+	for _, project := range projects {
+		url := fmt.Sprintf("%s/api/v4/projects/%d", config.GitlabURL, project.ID)
+		resp := makeRequest(t, "DELETE", url, nil)
+		resp.Body.Close()
+	}
+
+	for _, subgroup := range subgroups {
+		url := fmt.Sprintf("%s/api/v4/groups/%d", config.GitlabURL, subgroup.ID)
+		resp := makeRequest(t, "DELETE", url, nil)
+		resp.Body.Close()
+	}
 }
 
-func makeRequest(t *testing.T, method, url string, data map[string]string) *http.Response {
+func makeRequest(t *testing.T, method, url string, data map[string]interface{}) *http.Response {
 	t.Helper()
 
 	var req *http.Request
 	var err error
 
 	if data != nil {
-		jsonData, err := json.Marshal(data)
-		if err != nil {
-			t.Fatalf("Failed to marshal request data: %v", err)
+		jsonData, marshalErr := json.Marshal(data)
+		if marshalErr != nil {
+			t.Fatalf("Failed to marshal request data: %v", marshalErr)
 		}
 		req, err = http.NewRequest(method, url, bytes.NewBuffer(jsonData))
 	} else {
