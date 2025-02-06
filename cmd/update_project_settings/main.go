@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,6 +8,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 func main() {
@@ -29,6 +30,11 @@ func main() {
 	}
 
 	client := &http.Client{}
+	gitlabClient, err := gitlab.NewClient(accessToken, gitlab.WithBaseURL(gitlabURL))
+
+	if err != nil {
+		log.Fatalf("Failed to create GitLab client: %v", err)
+	}
 
 	// Get all projects in the group and its subgroups
 	projects, err := getAllProjectsInGroup(client, gitlabURL, accessToken, gid)
@@ -36,9 +42,8 @@ func main() {
 		log.Fatalf("Error fetching projects: %v", err)
 	}
 
-	// Update the squash option for each project
 	for _, project := range projects {
-		err := updateProjectSquashOption(client, gitlabURL, accessToken, project.ID)
+		err = updateProjectSettings(gitlabClient, project.ID)
 		if err != nil {
 			log.Printf("Error updating project %d: %v", project.ID, err)
 		} else {
@@ -87,37 +92,49 @@ func getAllProjectsInGroup(client *http.Client, gitlabURL, accessToken string, g
 	return allProjects, nil
 }
 
-// updateProjectSquashOption updates the squash option for a project
-func updateProjectSquashOption(client *http.Client, gitlabURL, accessToken string, projectID int) error {
-	url := fmt.Sprintf("%s/api/v4/projects/%d", gitlabURL, projectID)
-
-	data := map[string]string{
-		"squash_option": "default_on", // Options: "never", "always", "default_on", "default_off"
+func updateProjectSettings(client *gitlab.Client, projectID int) error {
+	options := &gitlab.EditProjectOptions{
+		SquashOption: gitlab.Ptr(gitlab.SquashOptionValue("default_on")), // Options: "never", "always", "default_on", "default_off"
 	}
-	jsonData, err := json.Marshal(data)
+
+	_, _, err := client.Projects.EditProject(projectID, options)
 	if err != nil {
-		return fmt.Errorf("marshaling data: %v", err)
-	}
-
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("creating request: %v", err)
-	}
-	req.Header.Add("PRIVATE-TOKEN", accessToken)
-	req.Header.Add("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("sending request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return fmt.Errorf("updating project settings: %v", err)
 	}
 
 	return nil
 }
+
+// func updateProjectSettings(client *http.Client, gitlabURL, accessToken string, projectID int) error {
+// 	url := fmt.Sprintf("%s/api/v4/projects/%d", gitlabURL, projectID)
+
+// 	data := map[string]string{
+// 		"squash_option": "default_on", // Options: "never", "always", "default_on", "default_off"
+// 	}
+// 	jsonData, err := json.Marshal(data)
+// 	if err != nil {
+// 		return fmt.Errorf("marshaling data: %v", err)
+// 	}
+
+// 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
+// 	if err != nil {
+// 		return fmt.Errorf("creating request: %v", err)
+// 	}
+// 	req.Header.Add("PRIVATE-TOKEN", accessToken)
+// 	req.Header.Add("Content-Type", "application/json")
+
+// 	resp, err := client.Do(req)
+// 	if err != nil {
+// 		return fmt.Errorf("sending request: %v", err)
+// 	}
+// 	defer resp.Body.Close()
+
+// 	if resp.StatusCode != http.StatusOK {
+// 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+// 	}
+
+// 	return nil
+// }
 
 // Project represents a GitLab project
 type Project struct {
