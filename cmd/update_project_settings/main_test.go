@@ -37,27 +37,19 @@ func TestUpdateSquashOption(t *testing.T) {
 	os.Args = []string{"cmd", config.GitlabURL, config.AccessToken, fmt.Sprint(config.MainGroupID)}
 	main()
 
-	for _, project := range projects {
-		currentSquashOption, err := getProjectSquashOption(t, project.ID)
+	// Refresh projects data after main() execution
+	for i, project := range projects {
+		updatedProject, _, err := gitlabClient.Projects.GetProject(project.ID, nil)
 		if err != nil {
-			t.Errorf("Failed to get squash option for project %d: %v", project.ID, err)
-			continue
+			t.Fatalf("Failed to get updated project %d: %v", project.ID, err)
 		}
+		projects[i] = updatedProject
+	}
 
-		if currentSquashOption != "default_on" {
+	for _, project := range projects {
+		if project.SquashOption != "default_on" {
 			t.Errorf("Project %d should have squash_option 'default_on', but got '%s'",
-				project.ID, currentSquashOption)
+				project.ID, project.SquashOption)
 		}
 	}
-}
-
-func getProjectSquashOption(t *testing.T, projectID int) (gitlab.SquashOptionValue, error) {
-	t.Helper()
-
-	project, _, err := gitlabClient.Projects.GetProject(projectID, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return project.SquashOption, nil
 }
