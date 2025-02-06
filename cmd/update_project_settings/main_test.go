@@ -43,7 +43,7 @@ func TestUpdateProjectSettings(t *testing.T) {
 	}
 
 	for _, project := range updatedProjects {
-		if project.SquashOption != "default_on" {
+		if project.SquashOption != gitlab.SquashOptionDefaultOn {
 			t.Errorf("Project %d should have squash_option 'default_on', but got '%s'",
 				project.ID, project.SquashOption)
 		}
@@ -53,6 +53,10 @@ func TestUpdateProjectSettings(t *testing.T) {
 		}
 		if project.AutocloseReferencedIssues != true {
 			t.Errorf("Project %d should have autoclose_referenced_issues 'true', but got '%s'",
+				project.ID, project.DefaultBranch)
+		}
+		if project.MergeMethod != gitlab.FastForwardMerge {
+			t.Errorf("Project %d should have merge_method 'ff', but got '%s'",
 				project.ID, project.DefaultBranch)
 		}
 	}

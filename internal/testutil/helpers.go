@@ -72,6 +72,7 @@ func (h *GitLabTestHelper) CreateTestProject(groupID int, name, squashOption str
 		NamespaceID:               gitlab.Ptr(groupID),
 		SquashOption:              gitlab.Ptr(gitlab.SquashOptionValue(squashOption)),
 		AutocloseReferencedIssues: gitlab.Ptr(false),
+		MergeMethod:               gitlab.Ptr(gitlab.NoFastForwardMerge),
 	}
 
 	project, _, err := h.Client.Projects.CreateProject(createOpts)
