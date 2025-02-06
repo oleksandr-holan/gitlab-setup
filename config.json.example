@@ -1,4 +1,5 @@
 {
     "gitlab_url": "https://your-gitlab-instance.com",
     "access_token": "your-access-token"
+    "main_group_id": 11111111
 }
