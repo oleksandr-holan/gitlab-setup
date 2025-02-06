@@ -12,44 +12,64 @@ import (
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
+// main.go
 func main() {
 	if len(os.Args) != 4 {
 		log.Fatalf("Usage: %s <gitlab-url> <access-token> <group-id>", os.Args[0])
 	}
 
-	gitlabURL := os.Args[1]
-	accessToken := os.Args[2]
-	groupID := os.Args[3]
-
-	if !strings.HasPrefix(gitlabURL, "https://") {
-		log.Fatalln("gitlab_url must use HTTPS (e.g., https://gitlab.example.com)")
+	projects, err := UpdateProjects(os.Args[1], os.Args[2], os.Args[3])
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	for _, project := range projects {
+		log.Printf("Successfully updated project %d (%s)", project.ID, project.PathWithNamespace)
+	}
+}
+
+// New function that contains the main logic and returns the updated projects
+func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, error) {
+	if !strings.HasPrefix(gitlabURL, "https://") {
+		return nil, fmt.Errorf("gitlab_url must use HTTPS (e.g., https://gitlab.example.com)")
+	}
+
 	gid, err := strconv.Atoi(groupID)
 	if err != nil {
-		log.Fatalf("Invalid group ID: %v", err)
+		return nil, fmt.Errorf("invalid group ID: %v", err)
 	}
 
 	client := &http.Client{}
 	gitlabClient, err := gitlab.NewClient(accessToken, gitlab.WithBaseURL(gitlabURL))
-
 	if err != nil {
-		log.Fatalf("Failed to create GitLab client: %v", err)
+		return nil, fmt.Errorf("failed to create GitLab client: %v", err)
 	}
 
 	// Get all projects in the group and its subgroups
 	projects, err := getAllProjectsInGroup(client, gitlabURL, accessToken, gid)
 	if err != nil {
-		log.Fatalf("Error fetching projects: %v", err)
+		return nil, fmt.Errorf("error fetching projects: %v", err)
 	}
 
+	updatedProjects := make([]*gitlab.Project, 0, len(projects))
 	for _, project := range projects {
-		err = updateProjectSettings(gitlabClient, project.ID)
+		options := &gitlab.EditProjectOptions{
+			SquashOption: gitlab.Ptr(gitlab.SquashOptionValue("default_on")), // Options: "never", "always", "default_on", "default_off"
+		}
+
+		if branch, _, err := gitlabClient.Branches.GetBranch(project.ID, "environment/dev"); err == nil && branch != nil {
+			options.DefaultBranch = gitlab.Ptr("environment/dev")
+		}
+
+		updatedProject, _, err := gitlabClient.Projects.EditProject(project.ID, options)
 		if err != nil {
 			log.Printf("Error updating project %d: %v", project.ID, err)
-		} else {
-			log.Printf("Successfully updated project %d (%s)", project.ID, project.PathWithNamespace)
+			continue
 		}
+		updatedProjects = append(updatedProjects, updatedProject)
 	}
+
+	return updatedProjects, nil
 }
 
 // getAllProjectsInGroup fetches all projects in a group and its subgroups
@@ -90,19 +110,6 @@ func getAllProjectsInGroup(client *http.Client, gitlabURL, accessToken string, g
 	}
 
 	return allProjects, nil
-}
-
-func updateProjectSettings(client *gitlab.Client, projectID int) error {
-	options := &gitlab.EditProjectOptions{
-		SquashOption: gitlab.Ptr(gitlab.SquashOptionValue("default_on")), // Options: "never", "always", "default_on", "default_off"
-	}
-
-	_, _, err := client.Projects.EditProject(projectID, options)
-	if err != nil {
-		return fmt.Errorf("updating project settings: %v", err)
-	}
-
-	return nil
 }
 
 // Project represents a GitLab project

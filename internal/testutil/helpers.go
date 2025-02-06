@@ -16,10 +16,29 @@ func (h *GitLabTestHelper) CreateTestStructure() ([]*gitlab.Group, []*gitlab.Pro
 	subGroup2 := h.CreateGroup(subGroup1.ID, h.GenerateRandomString())
 	subgroups := []*gitlab.Group{subGroup1, subGroup2}
 
-	projects := []*gitlab.Project{
-		h.CreateProject(subGroup2.ID, h.GenerateRandomString(), "never"),
-		h.CreateProject(subGroup1.ID, h.GenerateRandomString(), "always"),
-		h.CreateProject(h.Config.MainGroupID, h.GenerateRandomString(), "default_off"),
+	// Define project configurations
+	projectConfigs := []struct {
+		groupID      int
+		squashOption string
+	}{
+		{subGroup2.ID, "never"},
+		{subGroup1.ID, "always"},
+		{h.Config.MainGroupID, "default_off"},
+	}
+
+	projects := make([]*gitlab.Project, 0, len(projectConfigs))
+	for _, config := range projectConfigs {
+		project := h.CreateProject(config.groupID, h.GenerateRandomString(), config.squashOption)
+
+		_, _, err := h.Client.Branches.CreateBranch(project.ID, &gitlab.CreateBranchOptions{
+			Branch: gitlab.Ptr("environment/dev"),
+			Ref:    gitlab.Ptr("main"),
+		})
+		if err != nil {
+			h.T.Fatalf("Failed to create branch: %v", err)
+		}
+
+		projects = append(projects, project)
 	}
 
 	return subgroups, projects
