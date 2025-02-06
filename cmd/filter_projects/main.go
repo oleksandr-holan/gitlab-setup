@@ -9,27 +9,26 @@ import (
 )
 
 func main() {
-	// Replace with your GitLab token and group ID
-
 	config, err := configs.NewGitLabConfig()
-
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Create a new GitLab client
 	gitlabClient, err := gitlab.NewClient(config.AccessToken)
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	// Recursively list all projects in the group
 	projects, err := listGroupProjects(gitlabClient, config.MainGroupID)
 	if err != nil {
 		log.Fatalf("Failed to list projects: %v", err)
 	}
 
-	// Check each project for the environment/dev branch
+	// Create two slices to store results
+	hasDevBranchProjects := make([]string, 0)
+	noDevBranchProjects := make([]string, 0)
+
+	// Check each project and accumulate results
 	for _, project := range projects {
 		hasDevBranch, err := hasEnvironmentDevBranch(gitlabClient, project.ID)
 		if err != nil {
@@ -37,11 +36,25 @@ func main() {
 			continue
 		}
 
-		if !hasDevBranch {
-			fmt.Printf("Project %s (ID: %d) does not have an environment/dev branch\n", project.Name, project.ID)
+		projectInfo := fmt.Sprintf("%s (ID: %d)", project.Name, project.ID)
+		if hasDevBranch {
+			hasDevBranchProjects = append(hasDevBranchProjects, projectInfo)
 		} else {
-			fmt.Printf("Project %s (ID: %d) does has an environment/dev branch\n", project.Name, project.ID)
+			noDevBranchProjects = append(noDevBranchProjects, projectInfo)
 		}
+	}
+
+	// Print results in groups
+	fmt.Printf("\nProjects with environment/dev branch (%d):\n", len(hasDevBranchProjects))
+	fmt.Println("----------------------------------------")
+	for _, project := range hasDevBranchProjects {
+		fmt.Printf("- %s\n", project)
+	}
+
+	fmt.Printf("\nProjects without environment/dev branch (%d):\n", len(noDevBranchProjects))
+	fmt.Println("------------------------------------------")
+	for _, project := range noDevBranchProjects {
+		fmt.Printf("- %s\n", project)
 	}
 }
 
