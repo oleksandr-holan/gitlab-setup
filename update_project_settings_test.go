@@ -7,16 +7,20 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
 
 const (
-	gitlabURL    = "http://your-gitlab-instance.com"
-	accessToken  = "your-access-token"
 	letterBytes  = "abcdefghijklmnopqrstuvwxyz"
 	stringLength = 8
 )
+
+type Config struct {
+	GitlabURL   string `json:"gitlab_url"`
+	AccessToken string `json:"access_token"`
+}
 
 type GitLabGroup struct {
 	ID   int    `json:"id"`
@@ -29,6 +33,34 @@ type GitLabProject struct {
 	Name         string `json:"name"`
 	Path         string `json:"path"`
 	SquashOption string `json:"squash_option"`
+}
+
+var config Config
+
+func init() {
+	if err := loadConfig(); err != nil {
+		panic(fmt.Sprintf("Failed to load config: %v", err))
+	}
+}
+
+func loadConfig() error {
+	// Look for config.json in the same directory as the test file
+	configPath := filepath.Join(".", "config.json")
+
+	file, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("reading config file: %v", err)
+	}
+
+	if err := json.Unmarshal(file, &config); err != nil {
+		return fmt.Errorf("parsing config file: %v", err)
+	}
+
+	if config.GitlabURL == "" || config.AccessToken == "" {
+		return fmt.Errorf("gitlab_url and access_token must be set in config.json")
+	}
+
+	return nil
 }
 
 func TestUpdateSquashOption(t *testing.T) {
@@ -45,13 +77,13 @@ func TestUpdateSquashOption(t *testing.T) {
 
 	// Create projects with different squash options
 	projects := []GitLabProject{
-		createProject(t, fmt.Sprint(subGroup2.ID), generateRandomString(), "never"),      // Deepest level
-		createProject(t, fmt.Sprint(subGroup1.ID), generateRandomString(), "always"),     // Mid level
-		createProject(t, fmt.Sprint(mainGroup.ID), generateRandomString(), "default_on"), // Top level
+		createProject(t, fmt.Sprint(subGroup2.ID), generateRandomString(), "never"),       // Deepest level
+		createProject(t, fmt.Sprint(subGroup1.ID), generateRandomString(), "always"),      // Mid level
+		createProject(t, fmt.Sprint(mainGroup.ID), generateRandomString(), "default_off"), // Top level
 	}
 
 	// Run the main program
-	os.Args = []string{"cmd", gitlabURL, accessToken, fmt.Sprint(mainGroup.ID)}
+	os.Args = []string{"cmd", config.GitlabURL, config.AccessToken, fmt.Sprint(mainGroup.ID)}
 	main()
 
 	// Verify all projects now have squash_option set to default_on
@@ -70,7 +102,7 @@ func TestUpdateSquashOption(t *testing.T) {
 func createGroup(t *testing.T, parentID, name string) GitLabGroup {
 	t.Helper()
 
-	url := fmt.Sprintf("%s/api/v4/groups", gitlabURL)
+	url := fmt.Sprintf("%s/api/v4/groups", config.GitlabURL)
 	data := map[string]string{
 		"name": name,
 		"path": name,
@@ -93,7 +125,7 @@ func createGroup(t *testing.T, parentID, name string) GitLabGroup {
 func createProject(t *testing.T, groupID, name, squashOption string) GitLabProject {
 	t.Helper()
 
-	url := fmt.Sprintf("%s/api/v4/projects", gitlabURL)
+	url := fmt.Sprintf("%s/api/v4/projects", config.GitlabURL)
 	data := map[string]string{
 		"name":          name,
 		"path":          name,
@@ -115,7 +147,7 @@ func createProject(t *testing.T, groupID, name, squashOption string) GitLabProje
 func getProjectSquashOption(t *testing.T, projectID int) string {
 	t.Helper()
 
-	url := fmt.Sprintf("%s/api/v4/projects/%d", gitlabURL, projectID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d", config.GitlabURL, projectID)
 	resp := makeRequest(t, "GET", url, nil)
 	defer resp.Body.Close()
 
@@ -130,7 +162,7 @@ func getProjectSquashOption(t *testing.T, projectID int) string {
 func cleanupGroup(t *testing.T, groupID int) {
 	t.Helper()
 
-	url := fmt.Sprintf("%s/api/v4/groups/%d", gitlabURL, groupID)
+	url := fmt.Sprintf("%s/api/v4/groups/%d", config.GitlabURL, groupID)
 	resp := makeRequest(t, "DELETE", url, nil)
 	resp.Body.Close()
 }
@@ -155,7 +187,7 @@ func makeRequest(t *testing.T, method, url string, data map[string]string) *http
 		t.Fatalf("Failed to create request: %v", err)
 	}
 
-	req.Header.Add("PRIVATE-TOKEN", accessToken)
+	req.Header.Add("PRIVATE-TOKEN", config.AccessToken)
 	req.Header.Add("Content-Type", "application/json")
 
 	client := &http.Client{}
