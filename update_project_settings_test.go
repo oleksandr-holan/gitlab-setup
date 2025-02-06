@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -60,6 +61,10 @@ func loadConfig() error {
 
 	if config.GitlabURL == "" || config.AccessToken == "" || config.MainGroupID == 0 {
 		return fmt.Errorf("gitlab_url, access_token, and main_group_id must be set in config.json")
+	}
+
+	if !strings.HasPrefix(config.GitlabURL, "https://") {
+		return fmt.Errorf("gitlab_url must use HTTPS (e.g., https://gitlab.example.com)")
 	}
 
 	return nil

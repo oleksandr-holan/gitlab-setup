@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 )
 
 func main() {
@@ -19,6 +20,9 @@ func main() {
 	accessToken := os.Args[2]
 	groupID := os.Args[3]
 
+	if !strings.HasPrefix(gitlabURL, "https://") {
+		log.Fatalln("gitlab_url must use HTTPS (e.g., https://gitlab.example.com)")
+	}
 	gid, err := strconv.Atoi(groupID)
 	if err != nil {
 		log.Fatalf("Invalid group ID: %v", err)
