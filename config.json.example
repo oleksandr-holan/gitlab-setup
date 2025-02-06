@@ -1,4 +1,4 @@
 {
-    "gitlab_url": "http://your-gitlab-instance.com",
+    "gitlab_url": "https://your-gitlab-instance.com",
     "access_token": "your-access-token"
 }
