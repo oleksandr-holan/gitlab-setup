@@ -51,5 +51,9 @@ func TestUpdateProjectSettings(t *testing.T) {
 			t.Errorf("Project %d should have default_branch 'environment/dev', but got '%s'",
 				project.ID, project.DefaultBranch)
 		}
+		if project.AutocloseReferencedIssues != true {
+			t.Errorf("Project %d should have autoclose_referenced_issues 'true', but got '%s'",
+				project.ID, project.DefaultBranch)
+		}
 	}
 }

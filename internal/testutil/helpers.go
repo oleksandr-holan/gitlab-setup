@@ -12,8 +12,8 @@ func init() {
 }
 
 func (h *GitLabTestHelper) CreateTestStructure() ([]*gitlab.Group, []*gitlab.Project) {
-	subGroup1 := h.CreateGroup(h.Config.MainGroupID, h.GenerateRandomString())
-	subGroup2 := h.CreateGroup(subGroup1.ID, h.GenerateRandomString())
+	subGroup1 := h.CreateTestGroup(h.Config.MainGroupID, h.GenerateRandomString())
+	subGroup2 := h.CreateTestGroup(subGroup1.ID, h.GenerateRandomString())
 	subgroups := []*gitlab.Group{subGroup1, subGroup2}
 
 	// Define project configurations
@@ -28,7 +28,7 @@ func (h *GitLabTestHelper) CreateTestStructure() ([]*gitlab.Group, []*gitlab.Pro
 
 	projects := make([]*gitlab.Project, 0, len(projectConfigs))
 	for _, config := range projectConfigs {
-		project := h.CreateProject(config.groupID, h.GenerateRandomString(), config.squashOption)
+		project := h.CreateTestProject(config.groupID, h.GenerateRandomString(), config.squashOption)
 
 		_, _, err := h.Client.Branches.CreateBranch(project.ID, &gitlab.CreateBranchOptions{
 			Branch: gitlab.Ptr("environment/dev"),
@@ -44,7 +44,7 @@ func (h *GitLabTestHelper) CreateTestStructure() ([]*gitlab.Group, []*gitlab.Pro
 	return subgroups, projects
 }
 
-func (h *GitLabTestHelper) CreateGroup(parentID int, name string) *gitlab.Group {
+func (h *GitLabTestHelper) CreateTestGroup(parentID int, name string) *gitlab.Group {
 	h.T.Helper()
 
 	createOpts := &gitlab.CreateGroupOptions{
@@ -63,14 +63,15 @@ func (h *GitLabTestHelper) CreateGroup(parentID int, name string) *gitlab.Group 
 	return group
 }
 
-func (h *GitLabTestHelper) CreateProject(groupID int, name, squashOption string) *gitlab.Project {
+func (h *GitLabTestHelper) CreateTestProject(groupID int, name, squashOption string) *gitlab.Project {
 	h.T.Helper()
 
 	createOpts := &gitlab.CreateProjectOptions{
-		Name:         gitlab.Ptr(name),
-		Path:         gitlab.Ptr(name),
-		NamespaceID:  gitlab.Ptr(groupID),
-		SquashOption: gitlab.Ptr(gitlab.SquashOptionValue(squashOption)),
+		Name:                      gitlab.Ptr(name),
+		Path:                      gitlab.Ptr(name),
+		NamespaceID:               gitlab.Ptr(groupID),
+		SquashOption:              gitlab.Ptr(gitlab.SquashOptionValue(squashOption)),
+		AutocloseReferencedIssues: gitlab.Ptr(false),
 	}
 
 	project, _, err := h.Client.Projects.CreateProject(createOpts)

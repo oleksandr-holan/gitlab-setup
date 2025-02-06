@@ -54,7 +54,8 @@ func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, 
 	updatedProjects := make([]*gitlab.Project, 0, len(projects))
 	for _, project := range projects {
 		options := &gitlab.EditProjectOptions{
-			SquashOption: gitlab.Ptr(gitlab.SquashOptionValue("default_on")), // Options: "never", "always", "default_on", "default_off"
+			SquashOption:              gitlab.Ptr(gitlab.SquashOptionValue("default_on")), // Options: "never", "always", "default_on", "default_off"
+			AutocloseReferencedIssues: gitlab.Ptr(true),
 		}
 
 		if branch, _, err := gitlabClient.Branches.GetBranch(project.ID, "environment/dev"); err == nil && branch != nil {
