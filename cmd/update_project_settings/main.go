@@ -23,13 +23,6 @@ type Project struct {
 	PathWithNamespace string `json:"path_with_namespace"`
 }
 
-// type TargetBranchRuleResponse struct {
-// 	Errors           []string `json:"errors"`
-// 	TargetBranchRule struct {
-// 		Name string `json:"name"`
-// 	} `json:"targetBranchRule"`
-// }
-
 func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, error) {
 	if !strings.HasPrefix(gitlabURL, "https://") {
 		return nil, fmt.Errorf("gitlab_url must use HTTPS (e.g., https://gitlab.example.com)")
@@ -83,7 +76,7 @@ func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, 
 		}
 
 		// Create target branch rule using GraphQL
-		err = gitlabGraphQL.CreateTargetBranchRule(context.Background(), graphqlClient, project.ID, "*", "environment/dev")
+		err = gitlabGraphQL.CreateTargetBranchRule(context.Background(), graphqlClient, project.ID, "*", updatedProject.DefaultBranch)
 		if err != nil {
 			log.Printf("Error creating target branch rule for project %d: %v", project.ID, err)
 		}
@@ -92,63 +85,6 @@ func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, 
 	}
 
 	return updatedProjects, nil
-}
-
-// func createTargetBranchRule(ctx context.Context, client *graphql.Client, projectID int, name, targetBranch string) error {
-// 	var mutation struct {
-// 		ProjectTargetBranchRuleCreate struct {
-// 			Errors           []string
-// 			TargetBranchRule struct {
-// 				Name string
-// 			}
-// 		} `graphql:"projectTargetBranchRuleCreate(input: $input)"`
-// 	}
-
-// 	variables := map[string]interface{}{
-// 		"input": TargetBranchRuleCreateInput{
-// 			ProjectID:    fmt.Sprintf("gid://gitlab/Project/%d", projectID),
-// 			Name:         name,
-// 			TargetBranch: targetBranch,
-// 		},
-// 	}
-
-// 	err := client.Mutate(ctx, &mutation, variables)
-// 	if err != nil {
-// 		return fmt.Errorf("GraphQL mutation failed: %v", err)
-// 	}
-
-// 	if len(mutation.ProjectTargetBranchRuleCreate.Errors) > 0 {
-// 		return fmt.Errorf("GraphQL errors: %v", mutation.ProjectTargetBranchRuleCreate.Errors)
-// 	}
-
-// 	return nil
-// }
-
-func getTargetBranchRules(ctx context.Context, client *graphql.Client, projectPath string) error {
-	var query struct {
-		Project struct {
-			TargetBranchRules struct {
-				Nodes []struct {
-					ID           string
-					Name         string
-					TargetBranch string
-					CreatedAt    string
-					UpdatedAt    string
-				}
-			}
-		} `graphql:"project(fullPath: $fullPath)"`
-	}
-
-	variables := map[string]interface{}{
-		"fullPath": graphql.String(projectPath),
-	}
-
-	err := client.Query(ctx, &query, variables)
-	if err != nil {
-		return fmt.Errorf("GraphQL query failed: %v", err)
-	}
-
-	return nil
 }
 
 // getAllProjectsInGroup fetches all projects in a group and its subgroups

@@ -88,7 +88,7 @@ func TestUpdateProjectSettings(t *testing.T) {
 		// Check if the expected rule exists
 		foundRule := false
 		for _, rule := range rules {
-			if rule.Name == "*" && rule.TargetBranch == "environment/dev" {
+			if rule.Name == "*" && rule.TargetBranch == project.DefaultBranch {
 				foundRule = true
 				break
 			}
