@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,21 @@ import (
 
 	"github.com/oleksandr-holan/gitlab-setup/pkg/gitlabGraphQL"
 )
+
+func main() {
+	if len(os.Args) != 4 {
+		log.Fatalf("Usage: %s <gitlab-url> <access-token> <group-id>", os.Args[0])
+	}
+
+	projects, err := UpdateProjects(os.Args[1], os.Args[2], os.Args[3])
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, project := range projects {
+		log.Printf("Successfully updated project %d (%s)", project.ID, project.PathWithNamespace)
+	}
+}
 
 func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, error) {
 	if !strings.HasPrefix(gitlabURL, "https://") {
@@ -75,7 +91,7 @@ func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, 
 		// Create target branch rule using GraphQL
 		err = gitlabGraphQL.CreateTargetBranchRule(context.Background(), graphqlClient, project.ID, "*", updatedProject.DefaultBranch)
 		if err != nil {
-			log.Printf("Error creating target branch rule for project %d: %v", project.ID, err)
+			log.Printf("Error creating target branch rule for project %s: %v", project.PathWithNamespace, err)
 		}
 
 		updatedProjects = append(updatedProjects, updatedProject)
