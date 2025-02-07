@@ -1,34 +1,35 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 
+	graphql "github.com/hasura/go-graphql-client"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+
+	"golang.org/x/oauth2"
+
+	"github.com/oleksandr-holan/gitlab-setup/pkg/gitlabGraphQL"
 )
 
-// main.go
-func main() {
-	if len(os.Args) != 4 {
-		log.Fatalf("Usage: %s <gitlab-url> <access-token> <group-id>", os.Args[0])
-	}
-
-	projects, err := UpdateProjects(os.Args[1], os.Args[2], os.Args[3])
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, project := range projects {
-		log.Printf("Successfully updated project %d (%s)", project.ID, project.PathWithNamespace)
-	}
+// Project represents a GitLab project
+type Project struct {
+	ID                int    `json:"id"`
+	PathWithNamespace string `json:"path_with_namespace"`
 }
 
-// New function that contains the main logic and returns the updated projects
+// type TargetBranchRuleResponse struct {
+// 	Errors           []string `json:"errors"`
+// 	TargetBranchRule struct {
+// 		Name string `json:"name"`
+// 	} `json:"targetBranchRule"`
+// }
+
 func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, error) {
 	if !strings.HasPrefix(gitlabURL, "https://") {
 		return nil, fmt.Errorf("gitlab_url must use HTTPS (e.g., https://gitlab.example.com)")
@@ -44,6 +45,18 @@ func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GitLab client: %v", err)
 	}
+
+	// Initialize GraphQL client
+	graphqlClient := graphql.NewClient(
+		fmt.Sprintf("%s/api/graphql", gitlabURL),
+		&http.Client{
+			Transport: &oauth2.Transport{
+				Source: oauth2.StaticTokenSource(
+					&oauth2.Token{AccessToken: accessToken},
+				),
+			},
+		},
+	)
 
 	// Get all projects in the group and its subgroups
 	projects, err := getAllProjectsInGroup(client, gitlabURL, accessToken, gid)
@@ -68,10 +81,74 @@ func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, 
 			log.Printf("Error updating project %d: %v", project.ID, err)
 			continue
 		}
+
+		// Create target branch rule using GraphQL
+		err = gitlabGraphQL.CreateTargetBranchRule(context.Background(), graphqlClient, project.ID, "*", "environment/dev")
+		if err != nil {
+			log.Printf("Error creating target branch rule for project %d: %v", project.ID, err)
+		}
+
 		updatedProjects = append(updatedProjects, updatedProject)
 	}
 
 	return updatedProjects, nil
+}
+
+// func createTargetBranchRule(ctx context.Context, client *graphql.Client, projectID int, name, targetBranch string) error {
+// 	var mutation struct {
+// 		ProjectTargetBranchRuleCreate struct {
+// 			Errors           []string
+// 			TargetBranchRule struct {
+// 				Name string
+// 			}
+// 		} `graphql:"projectTargetBranchRuleCreate(input: $input)"`
+// 	}
+
+// 	variables := map[string]interface{}{
+// 		"input": TargetBranchRuleCreateInput{
+// 			ProjectID:    fmt.Sprintf("gid://gitlab/Project/%d", projectID),
+// 			Name:         name,
+// 			TargetBranch: targetBranch,
+// 		},
+// 	}
+
+// 	err := client.Mutate(ctx, &mutation, variables)
+// 	if err != nil {
+// 		return fmt.Errorf("GraphQL mutation failed: %v", err)
+// 	}
+
+// 	if len(mutation.ProjectTargetBranchRuleCreate.Errors) > 0 {
+// 		return fmt.Errorf("GraphQL errors: %v", mutation.ProjectTargetBranchRuleCreate.Errors)
+// 	}
+
+// 	return nil
+// }
+
+func getTargetBranchRules(ctx context.Context, client *graphql.Client, projectPath string) error {
+	var query struct {
+		Project struct {
+			TargetBranchRules struct {
+				Nodes []struct {
+					ID           string
+					Name         string
+					TargetBranch string
+					CreatedAt    string
+					UpdatedAt    string
+				}
+			}
+		} `graphql:"project(fullPath: $fullPath)"`
+	}
+
+	variables := map[string]interface{}{
+		"fullPath": graphql.String(projectPath),
+	}
+
+	err := client.Query(ctx, &query, variables)
+	if err != nil {
+		return fmt.Errorf("GraphQL query failed: %v", err)
+	}
+
+	return nil
 }
 
 // getAllProjectsInGroup fetches all projects in a group and its subgroups
@@ -112,10 +189,4 @@ func getAllProjectsInGroup(client *http.Client, gitlabURL, accessToken string, g
 	}
 
 	return allProjects, nil
-}
-
-// Project represents a GitLab project
-type Project struct {
-	ID                int    `json:"id"`
-	PathWithNamespace string `json:"path_with_namespace"`
 }

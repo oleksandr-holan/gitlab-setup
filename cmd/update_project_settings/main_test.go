@@ -1,12 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"testing"
+
+	graphql "github.com/hasura/go-graphql-client"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
+	"golang.org/x/oauth2"
 
 	"github.com/oleksandr-holan/gitlab-setup/internal/testutil"
 	configs "github.com/oleksandr-holan/gitlab-setup/pkg/config"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
+	"github.com/oleksandr-holan/gitlab-setup/pkg/gitlabGraphQL"
 )
 
 var config *configs.GitLab
@@ -25,6 +31,18 @@ func TestUpdateProjectSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create GitLab client: %v", err)
 	}
+
+	// Initialize GraphQL client
+	graphqlClient := graphql.NewClient(
+		fmt.Sprintf("%s/api/graphql", config.GitlabURL),
+		&http.Client{
+			Transport: &oauth2.Transport{
+				Source: oauth2.StaticTokenSource(
+					&oauth2.Token{AccessToken: config.AccessToken},
+				),
+			},
+		},
+	)
 
 	helper = testutil.NewGitLabTestHelper(t, config)
 	subgroups, projects := helper.CreateTestStructure()
@@ -58,6 +76,27 @@ func TestUpdateProjectSettings(t *testing.T) {
 		if project.MergeMethod != gitlab.FastForwardMerge {
 			t.Errorf("Project %d should have merge_method 'ff', but got '%s'",
 				project.ID, project.DefaultBranch)
+		}
+
+		// Test GraphQL target branch rules
+		rules, err := gitlabGraphQL.GetTargetBranchRules(context.Background(), graphqlClient, project.PathWithNamespace)
+		if err != nil {
+			t.Errorf("Failed to get target branch rules for project %d: %v", project.ID, err)
+			continue
+		}
+
+		// Check if the expected rule exists
+		foundRule := false
+		for _, rule := range rules {
+			if rule.Name == "*" && rule.TargetBranch == "environment/dev" {
+				foundRule = true
+				break
+			}
+		}
+
+		if !foundRule {
+			t.Errorf("Project %d should have a target branch rule with name '*' and target branch 'environment/dev'",
+				project.ID)
 		}
 	}
 }
