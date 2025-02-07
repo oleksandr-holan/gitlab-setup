@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,12 +16,6 @@ import (
 	"github.com/oleksandr-holan/gitlab-setup/pkg/gitlabGraphQL"
 )
 
-// Project represents a GitLab project
-type Project struct {
-	ID                int    `json:"id"`
-	PathWithNamespace string `json:"path_with_namespace"`
-}
-
 func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, error) {
 	if !strings.HasPrefix(gitlabURL, "https://") {
 		return nil, fmt.Errorf("gitlab_url must use HTTPS (e.g., https://gitlab.example.com)")
@@ -33,7 +26,7 @@ func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, 
 		return nil, fmt.Errorf("invalid group ID: %v", err)
 	}
 
-	client := &http.Client{}
+	// client := &http.Client{}
 	gitlabClient, err := gitlab.NewClient(accessToken, gitlab.WithBaseURL(gitlabURL))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GitLab client: %v", err)
@@ -52,7 +45,7 @@ func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, 
 	)
 
 	// Get all projects in the group and its subgroups
-	projects, err := getAllProjectsInGroup(client, gitlabURL, accessToken, gid)
+	projects, err := getAllProjectsInGroup(gitlabClient, gid)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching projects: %v", err)
 	}
@@ -60,9 +53,13 @@ func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, 
 	updatedProjects := make([]*gitlab.Project, 0, len(projects))
 	for _, project := range projects {
 		options := &gitlab.EditProjectOptions{
-			SquashOption:              gitlab.Ptr(gitlab.SquashOptionDefaultOn), // Options: "never", "always", "default_on", "default_off"
+			SquashOption:              gitlab.Ptr(gitlab.SquashOptionDefaultOn),
 			AutocloseReferencedIssues: gitlab.Ptr(true),
 			MergeMethod:               gitlab.Ptr(gitlab.FastForwardMerge),
+		}
+
+		if project.ForkedFromProject != nil {
+			options.MergeRequestDefaultTargetSelf = gitlab.Ptr(true)
 		}
 
 		if branch, _, err := gitlabClient.Branches.GetBranch(project.ID, "environment/dev"); err == nil && branch != nil {
@@ -87,41 +84,30 @@ func UpdateProjects(gitlabURL, accessToken, groupID string) ([]*gitlab.Project, 
 	return updatedProjects, nil
 }
 
-// getAllProjectsInGroup fetches all projects in a group and its subgroups
-func getAllProjectsInGroup(client *http.Client, gitlabURL, accessToken string, groupID int) ([]Project, error) {
-	var allProjects []Project
-	page := 1
+func getAllProjectsInGroup(client *gitlab.Client, groupID int) ([]*gitlab.Project, error) {
+	opt := &gitlab.ListGroupProjectsOptions{
+		IncludeSubGroups: gitlab.Ptr(true),
+		ListOptions: gitlab.ListOptions{
+			PerPage: 100,
+			Page:    1,
+		},
+	}
 
+	var allProjects []*gitlab.Project
 	for {
-		url := fmt.Sprintf("%s/api/v4/groups/%d/projects?include_subgroups=true&page=%d&per_page=100", gitlabURL, groupID, page)
-		req, err := http.NewRequest("GET", url, nil)
+		projects, resp, err := client.Groups.ListGroupProjects(groupID, opt)
 		if err != nil {
-			return nil, fmt.Errorf("creating request: %v", err)
-		}
-		req.Header.Add("PRIVATE-TOKEN", accessToken)
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("fetching projects: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-		}
-
-		var projects []Project
-		if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
-			return nil, fmt.Errorf("decoding response: %v", err)
+			return nil, fmt.Errorf("listing group projects: %v", err)
 		}
 
 		allProjects = append(allProjects, projects...)
 
-		nextPage := resp.Header.Get("X-Next-Page")
-		if nextPage == "" || nextPage == "0" {
+		if resp.CurrentPage >= resp.TotalPages {
 			break
 		}
-		page++
+
+		// Update the page number to get the next page
+		opt.Page = resp.NextPage
 	}
 
 	return allProjects, nil

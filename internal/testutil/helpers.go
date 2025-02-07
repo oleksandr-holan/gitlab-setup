@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -12,18 +13,23 @@ func init() {
 }
 
 func (h *GitLabTestHelper) CreateTestStructure() ([]*gitlab.Group, []*gitlab.Project) {
+	// Create source subgroups
 	subGroup1 := h.CreateTestGroup(h.Config.MainGroupID, h.GenerateRandomString())
 	subGroup2 := h.CreateTestGroup(subGroup1.ID, h.GenerateRandomString())
-	subgroups := []*gitlab.Group{subGroup1, subGroup2}
 
-	// Define project configurations
+	// Create target subgroups for forks (in the same main group)
+	forkSubGroup1 := h.CreateTestGroup(h.Config.MainGroupID, fmt.Sprintf("fork-%s", subGroup1.Path))
+	forkSubGroup2 := h.CreateTestGroup(forkSubGroup1.ID, fmt.Sprintf("fork-%s", subGroup2.Path))
+	subgroups := []*gitlab.Group{subGroup1, subGroup2, forkSubGroup1, forkSubGroup2}
+
 	projectConfigs := []struct {
 		groupID      int
-		squashOption string
+		squashOption gitlab.SquashOptionValue
+		forkToGroup  int
 	}{
-		{subGroup2.ID, "never"},
-		{subGroup1.ID, "always"},
-		{h.Config.MainGroupID, "default_off"},
+		{subGroup2.ID, gitlab.SquashOptionNever, forkSubGroup2.ID},
+		{subGroup1.ID, gitlab.SquashOptionAlways, forkSubGroup1.ID},
+		{h.Config.MainGroupID, gitlab.SquashOptionDefaultOff, 0},
 	}
 
 	projects := make([]*gitlab.Project, 0, len(projectConfigs))
@@ -35,10 +41,26 @@ func (h *GitLabTestHelper) CreateTestStructure() ([]*gitlab.Group, []*gitlab.Pro
 			Ref:    gitlab.Ptr("main"),
 		})
 		if err != nil {
-			h.T.Fatalf("Failed to create branch: %v", err)
+			h.T.Errorf("Failed to create branch: %v", err)
 		}
 
 		projects = append(projects, project)
+
+		if config.forkToGroup == 0 {
+			continue
+		}
+
+		forkOpts := &gitlab.ForkProjectOptions{
+			NamespaceID: gitlab.Ptr(config.forkToGroup),
+			Name:        gitlab.Ptr(fmt.Sprintf("fork-%s", project.Path)),
+		}
+
+		forkedProject, _, err := h.Client.Projects.ForkProject(project.ID, forkOpts)
+		if err != nil {
+			h.T.Fatalf("Failed to fork project:: %v", err)
+		}
+
+		projects = append(projects, forkedProject)
 	}
 
 	return subgroups, projects
@@ -63,14 +85,14 @@ func (h *GitLabTestHelper) CreateTestGroup(parentID int, name string) *gitlab.Gr
 	return group
 }
 
-func (h *GitLabTestHelper) CreateTestProject(groupID int, name, squashOption string) *gitlab.Project {
+func (h *GitLabTestHelper) CreateTestProject(groupID int, name string, squashOption gitlab.SquashOptionValue) *gitlab.Project {
 	h.T.Helper()
 
 	createOpts := &gitlab.CreateProjectOptions{
 		Name:                      gitlab.Ptr(name),
 		Path:                      gitlab.Ptr(name),
 		NamespaceID:               gitlab.Ptr(groupID),
-		SquashOption:              gitlab.Ptr(gitlab.SquashOptionValue(squashOption)),
+		SquashOption:              gitlab.Ptr(squashOption),
 		AutocloseReferencedIssues: gitlab.Ptr(false),
 		MergeMethod:               gitlab.Ptr(gitlab.NoFastForwardMerge),
 	}
@@ -102,14 +124,14 @@ func (h *GitLabTestHelper) CleanupSubgroupsAndProjects(subgroups []*gitlab.Group
 	for _, project := range projects {
 		_, err := h.Client.Projects.DeleteProject(project.ID, nil)
 		if err != nil {
-			h.T.Fatalf("Failed to delete project %d: %v", project.ID, err)
+			h.T.Errorf("Failed to delete project %d: %v", project.ID, err)
 		}
 	}
 
 	for _, subgroup := range subgroups {
 		_, err := h.Client.Groups.DeleteGroup(subgroup.ID, nil)
 		if err != nil {
-			h.T.Fatalf("Failed to delete subgroup %d: %v", subgroup.ID, err)
+			h.T.Errorf("Failed to delete subgroup %d: %v", subgroup.ID, err)
 		}
 	}
 }

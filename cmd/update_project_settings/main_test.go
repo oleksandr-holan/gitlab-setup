@@ -69,13 +69,17 @@ func TestUpdateProjectSettings(t *testing.T) {
 			t.Errorf("Project %d should have default_branch 'environment/dev', but got '%s'",
 				project.ID, project.DefaultBranch)
 		}
-		if project.AutocloseReferencedIssues != true {
-			t.Errorf("Project %d should have autoclose_referenced_issues 'true', but got '%s'",
-				project.ID, project.DefaultBranch)
+		if !project.AutocloseReferencedIssues {
+			t.Errorf("Project %d should have autoclose_referenced_issues 'true', but got '%t'",
+				project.ID, project.AutocloseReferencedIssues)
 		}
 		if project.MergeMethod != gitlab.FastForwardMerge {
 			t.Errorf("Project %d should have merge_method 'ff', but got '%s'",
-				project.ID, project.DefaultBranch)
+				project.ID, project.MergeMethod)
+		}
+		if project.ForkedFromProject != nil && !project.MergeRequestDefaultTargetSelf {
+			t.Errorf("Project %d should have mr_default_target_self 'true', but got '%t'",
+				project.ID, project.MergeRequestDefaultTargetSelf)
 		}
 
 		// Test GraphQL target branch rules
